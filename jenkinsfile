@@ -66,60 +66,6 @@ pipeline {
                 }
             }
         }
-
-        stage('Docker Scout Image') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PWD')]) {
-                        sh """
-                            echo "$DOCKER_PWD" | docker login -u "$DOCKER_USER" --password-stdin
-
-                            if ! command -v docker-scout >/dev/null 2>&1; then
-                              curl -sSfL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- -b /usr/local/bin
-                            fi
-
-                            IMAGE="hemangi0208/zomato:latest"
-
-                            if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-                              docker pull "$IMAGE"
-                            fi
-
-                            docker-scout quickview "$IMAGE"
-                            docker-scout cves "$IMAGE"
-                            docker-scout recommendations "$IMAGE"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage ("Deploy to Container") {
-            steps {
-                script {
-                    sh """
-                        IMAGE="hemangi0208/zomato:latest"
-
-                        echo "Pulling latest image..."
-                        docker pull \$IMAGE || true
-
-                        echo "Removing old container if exists..."
-                        if docker ps -a --format '{{.Names}}' | grep -w zomato >/dev/null 2>&1; then
-                            docker rm -f zomato || true
-                        fi
-
-                        echo "Starting new container..."
-                        docker run -d --restart unless-stopped --name zomato -p 3000:3000 \$IMAGE || {
-                            echo "Container failed to start. Showing logs..."
-                            docker logs zomato || true
-                            exit 1
-                        }
-
-                        echo "Container started successfully!"
-                        docker ps -a
-                    """
-                }
-            }
-        }
     }
 
     post {
