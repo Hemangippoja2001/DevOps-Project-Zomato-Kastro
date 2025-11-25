@@ -9,14 +9,10 @@ pipeline {
     }
     stages {
         stage ("clean workspace") {
-            steps {
-                cleanWs()
-            }
+            steps { cleanWs() }
         }
         stage ("Git Checkout") {
-            steps {
-                git 'https://github.com/Hemangippoja2001/DevOps-Project-Zomato-Kastro.git'
-            }
+            steps { git 'https://github.com/Hemangippoja2001/DevOps-Project-Zomato-Kastro.git' }
         }
         stage("Sonarqube Analysis"){
             steps{
@@ -29,30 +25,24 @@ pipeline {
         stage("Code Quality Gate"){
            steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
                 }
-            } 
+            }
         }
         stage("Install NPM Dependencies") {
-            steps {
-                sh "npm install"
-            }
+            steps { sh "npm install" }
         }
         stage('OWASP FS SCAN') {
             steps {
                 dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit -n', odcInstallation: 'DP-Check'
                 dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-    }
-}
-        stage ("Trivy File Scan") {
-            steps {
-                sh "trivy fs . > trivy.txt"
             }
         }
+        stage ("Trivy File Scan") {
+            steps { sh "trivy fs . > trivy.txt" }
+        }
         stage ("Build Docker Image") {
-            steps {
-                sh "docker build -t zomato ."
-            }
+            steps { sh "docker build -t zomato ." }
         }
         stage ("Tag & Push to DockerHub") {
             steps {
@@ -64,45 +54,57 @@ pipeline {
                 }
             }
         }
+
+        // <<< UPDATED STAGE: use system docker, avoid Jenkins 'docker' tool >>>
         stage('Docker Scout Image') {
             steps {
-                script{
-                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){
-                       sh 'docker-scout quickview hemangi0208/zomato:latest'
-                       sh 'docker-scout cves hemangi0208/zomato:latest'
-                       sh 'docker-scout recommendations hemangi0208/zomato:latest'
-                   }
+                script {
+                    // login using Jenkins credential (do not use toolName => avoids old downloaded docker client)
+                    withCredentials([usernamePassword(credentialsId: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PWD')]) {
+                        sh '''
+                        # login to docker registry using system docker
+                        echo "$DOCKER_PWD" | docker login -u "$DOCKER_USER" --password-stdin
+
+                        # install docker-scout if not present
+                        if ! command -v docker-scout >/dev/null 2>&1; then
+                          curl -sSfL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- -b /usr/local/bin
+                        fi
+
+                        # run scout scans against the image
+                        docker-scout quickview hemangi0208/zomato:latest
+                        docker-scout cves hemangi0208/zomato:latest
+                        docker-scout recommendations hemangi0208/zomato:latest
+                        '''
+                    }
                 }
             }
         }
         stage ("Deploy to Container") {
-            steps {
-                sh 'docker run -d --name zomato -p 3000:3000 hemangi0208/zomato:latest'
-            }
+            steps { sh 'docker run -d --name zomato -p 3000:3000 hemangi0208/zomato:latest' }
         }
     }
     post {
-    always {
-        emailext attachLog: true,
-            subject: "'${currentBuild.result}'",
-            body: """
-                <html>
-                <body>
-                    <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
-                        <p style="color: white; font-weight: bold;">Project: ${env.JOB_NAME}</p>
-                    </div>
-                    <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
-                        <p style="color: white; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
-                    </div>
-                    <div style="background-color: #87CEEB; padding: 10px; margin-bottom: 10px;">
-                        <p style="color: white; font-weight: bold;">URL: ${env.BUILD_URL}</p>
-                    </div>
-                </body>
-                </html>
-            """,
-            to: 'hemangichau2447@gmail.com',
-            mimeType: 'text/html',
-            attachmentsPattern: 'trivy.txt'
+        always {
+            emailext attachLog: true,
+                subject: "'${currentBuild.result}'",
+                body: """
+                    <html>
+                    <body>
+                        <div style="background-color: #FFA07A; padding: 10px; margin-bottom: 10px;">
+                            <p style="color: white; font-weight: bold;">Project: ${env.JOB_NAME}</p>
+                        </div>
+                        <div style="background-color: #90EE90; padding: 10px; margin-bottom: 10px;">
+                            <p style="color: white; font-weight: bold;">Build Number: ${env.BUILD_NUMBER}</p>
+                        </div>
+                        <div style="background-color: #87CEEB; padding: 10px; margin-bottom: 10px;">
+                            <p style="color: white; font-weight: bold;">URL: ${env.BUILD_URL}</p>
+                        </div>
+                    </body>
+                    </html>
+                """,
+                to: 'hemangichau2447@gmail.com',
+                mimeType: 'text/html',
+                attachmentsPattern: 'trivy.txt'
         }
     }
 }
