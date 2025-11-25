@@ -67,7 +67,6 @@ pipeline {
             }
         }
 
-        // FINAL WORKING DOCKER SCOUT STAGE
         stage('Docker Scout Image') {
             steps {
                 script {
@@ -94,7 +93,6 @@ pipeline {
             }
         }
 
-        // DEPLOY STAGE - FIXED AND FINAL
         stage ("Deploy to Container") {
             steps {
                 script {
